@@ -1,5 +1,5 @@
-﻿# TwitterDump: Gallery-DL + Aria2
-Download gallery images using [Gallery-DL](https://github.com/mikf/gallery-dl) and [Aria2](https://github.com/aria2/aria2)
+﻿# TwitterDump: Download images using [Gallery-DL](https://github.com/mikf/gallery-dl) + [Aria2](https://github.com/aria2/aria2)
+[![Build status](https://ci.appveyor.com/api/projects/status/gh5po08wfgk6n1ck/branch/master?svg=true)](https://ci.appveyor.com/project/hsheric0210/twitterdump/branch/master)
 
 * All sites [which supported by Gallery-DL](https://github.com/mikf/gallery-dl/blob/master/docs/supportedsites.md) are supported
   * But you need to modify *'Parameters' key in 'GalleryDL' section* in configuration.
@@ -11,4 +11,5 @@ Download gallery images using [Gallery-DL](https://github.com/mikf/gallery-dl) a
 
 * Needed resource file name:
   * Query file (Default: list.txt)
-  * Destination folder (Default: Downloaded\{Query})
+  * Destination folder (Default: Downloaded\{Query})**
+**
