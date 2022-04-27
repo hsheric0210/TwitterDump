@@ -18,7 +18,6 @@ namespace TwitterDump
 		public string imageListFile;
 		public string correctedImageListFile;
 
-		public string extensionDictionaryFileName;
 		public string listFileName;
 		public string destinationFolder;
 
@@ -40,7 +39,6 @@ namespace TwitterDump
 			imageListFile = config.read("ImageListFile", "ImageURLList");
 			correctedImageListFile = config.read("CorrectedImageListFile", "ImageURLList");
 
-			extensionDictionaryFileName = config.read("ExtensionDictionary", "Misc");
 			listFileName = config.read("ListFile", "Misc");
 			destinationFolder = config.read("DestinationFolder", "Misc");
 
@@ -91,9 +89,6 @@ namespace TwitterDump
 			builder.AppendLine("CorrectedImageListFile={0}.lst");
 
 			builder.AppendLine("[Misc]");
-
-			builder.AppendLine("; The file contains image extension dictionary");
-			builder.AppendLine("ExtensionDictionary=ExtensionDictionary.txt");
 
 			builder.AppendLine("; The file contains member IDs");
 			builder.AppendLine("ListFile=list.txt");
