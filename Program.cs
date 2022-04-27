@@ -1,6 +1,7 @@
 ﻿
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Text;
 
 namespace TwitterDump
 {
@@ -55,18 +56,6 @@ namespace TwitterDump
 
 			Console.WriteLine("Finished extracting image list.");
 
-			var imageExtension = new ConcurrentDictionary<string, string>();
-
-			var extensionFileName = config.extensionDictionaryFileName;
-			bool extensionFileExists = File.Exists(extensionFileName);
-			if (extensionFileExists)
-				foreach (string line in File.ReadAllLines(extensionFileName))
-				{
-					int sep = line.IndexOf('=');
-					if (sep > 0)
-						imageExtension[line[..sep]] = line[(sep + 1)..];
-				}
-
 			Parallel.ForEach(members, member =>
 			{
 				var memberURLFile = config.getImageListFilePath(member);
@@ -75,22 +64,49 @@ namespace TwitterDump
 				if (File.Exists(memberURLFile) && !File.Exists(newMemberURLFile))
 				{
 					string[] lines = File.ReadAllLines(memberURLFile);
-					var newLines = new List<string>(lines.Length);
+					int lineLength = lines.Length;
+
+					var mainURIs = new List<(string, string?)>(lineLength);
+					var mirrors = new Dictionary<string, List<string>>();
+					string? lastMainURI = null;
 					foreach (string line in lines)
-						if (line.StartsWith("http") && line.Contains("twimg.com"))
+					{
+						if (config.twitterMode && !line.Contains("twimg.com"))
+							continue;
+						if (line.StartsWith("http"))
 						{
-							newLines.Add(line);
-							if (!extensionFileExists && line.Contains("pbs.twimg.com")/* && line.Contains("?format=")*/)
-								imageExtension[line[(line.LastIndexOf('/') + 1)..line.IndexOf('?')]] = line[(line.IndexOf("format=") + 7)..line.IndexOf('&')];
+							// *.twimg.com/*/{filename}?format={format}&(...)
+							string? ext = (config.twitterMode && line.Contains("pbs.twimg.com")) ? $"{line[(line.LastIndexOf('/') + 1)..line.IndexOf('?')]}.{line[(line.IndexOf("format=") + 7)..line.IndexOf('&')]}" : null;
+							mainURIs.Add((lastMainURI = line.Trim(), ext));
 						}
-					File.WriteAllLines(newMemberURLFile, newLines);
+						else if (lastMainURI != null && line.StartsWith('|'))
+						{
+							if (!mirrors.ContainsKey(lastMainURI))
+								mirrors[lastMainURI] = new List<string>();
+							mirrors[lastMainURI].Add(line[1..].Trim());
+						}
+					}
+
+					var correctedLines = new List<string>(lineLength);
+					foreach ((string mainURI, string? otherFileName) in mainURIs)
+					{
+						var builder = new StringBuilder();
+						builder.Append(mainURI);
+						if (mirrors.ContainsKey(mainURI))
+						{
+							builder.Append('\t');
+							builder.AppendJoin('\t', mirrors[mainURI]);
+						}
+						correctedLines.Add(builder.ToString());
+						if (otherFileName != null)
+							correctedLines.Add($"  out={otherFileName}");
+					}
+
+					File.WriteAllLines(newMemberURLFile, correctedLines);
 
 					Console.WriteLine($"Corrected image list for {member}.");
 				}
 			});
-
-			if (!extensionFileExists)
-				File.WriteAllLines(extensionFileName, imageExtension.Select(pair => $"{pair.Key}={pair.Value}"));
 
 			Console.WriteLine("Finished correcting all image list.");
 
@@ -111,27 +127,6 @@ namespace TwitterDump
 			});
 
 			Console.WriteLine("Finished downloading.");
-
-			Parallel.ForEach(members, member =>
-			{
-				string dir = config.getDestinationFolder(member);
-				if (Directory.Exists(dir))
-					foreach (string file in Directory.EnumerateFiles(dir, "*", SearchOption.TopDirectoryOnly))
-					{
-						var filename = file[(file.LastIndexOf('\\') + 1)..];
-						if (!filename.Contains('.') && imageExtension.TryGetValue(filename, out string? extension))
-						{
-							var destFileName = $"{file}.{extension}";
-							if (!File.Exists(destFileName))
-							{
-								File.Move(file, destFileName, false);
-								Console.WriteLine($"Renamed {filename} to {filename}.{extension}");
-							}
-						}
-					}
-			});
-
-			Console.WriteLine("Finished renaming.");
 		}
 
 		private static bool checkFileExistence(string fileName, string description)

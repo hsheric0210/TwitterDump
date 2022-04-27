@@ -22,6 +22,8 @@ namespace TwitterDump
 		public string listFileName;
 		public string destinationFolder;
 
+		public bool twitterMode;
+
 		private string imageListFormat;
 
 		public Config(IniFile config)
@@ -42,12 +44,14 @@ namespace TwitterDump
 			listFileName = config.read("ListFile", "Misc");
 			destinationFolder = config.read("DestinationFolder", "Misc");
 
+			twitterMode = config.read("TwitterMode", "Misc").Equals("true");
+
 			imageListFormat = $"{imageListFolder}\\{{0}}";
 		}
 
 		public string getImageListFilePath(string memberID) => string.Format(imageListFormat, string.Format(imageListFile, memberID));
 
-		public string getCorrectedImageListFilePath(string memberID) => string.Format(imageListFormat, string.Format(correctedImageListFile, memberID));
+		public string getCorrectedImageListFilePath(string memberID) => twitterMode ? string.Format(imageListFormat, string.Format(correctedImageListFile, memberID)) : getImageListFilePath(memberID);
 
 		public string getGalleryDLParameter(string memberID) => string.Format(galleryDLParameters, memberID);
 
@@ -73,7 +77,7 @@ namespace TwitterDump
 			builder.AppendLine("Executable=aria2c.exe");
 
 			builder.AppendLine("; aria2 parameters");
-			builder.AppendLine("Parameters=-j 16 -x 4 -k 2M -s 8 --conditional-get true --allow-overwrite true --auto-file-renaming false -i {0} -d {1}");
+			builder.AppendLine("Parameters=-j 16 -x 4 -k 2M -s 8 --conditional-get true --allow-overwrite true --auto-file-renaming false --uri-selector=inorder -i {0} -d {1}");
 
 			builder.AppendLine("[ImageURLList]");
 
@@ -96,6 +100,9 @@ namespace TwitterDump
 
 			builder.AppendLine("; Destination folder");
 			builder.AppendLine("DestinationFolder=.\\Downloaded\\{0}");
+
+			builder.AppendLine("; Twitter mode: Download media only via twimg.net; Append correct file extension to downloaded images after download phase is finished");
+			builder.AppendLine("TwitterMode=true");
 
 			File.WriteAllText(path, builder.ToString());
 		}
