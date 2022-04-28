@@ -7,7 +7,7 @@ using System.Linq;
 
 namespace TwitterDump
 {
-	class Program
+	public static class Program
 	{
 		public static readonly string[] LineSeparators = new string[3] { "\r\n", "\r", "\n" };
 
@@ -149,82 +149,5 @@ namespace TwitterDump
 			Console.WriteLine(message);
 			Console.ForegroundColor = prevColor;
 		}
-	}
-
-	public static class Utils
-	{
-		public static string ToFileName(this string str) => string.Join("_", str.Split(Path.GetInvalidFileNameChars()));
-	}
-
-	public abstract class Protocol
-	{
-		private static readonly Protocol[] ProtocolRegistry;
-		public static readonly Protocol Default = new DefaultProtocol();
-
-		static Protocol()
-		{
-			ProtocolRegistry = new Protocol[1];
-			ProtocolRegistry[0] = new TwitterProtocol();
-		}
-
-		public abstract string Name
-		{
-			get;
-		}
-
-		public abstract Regex? Pattern
-		{
-			get;
-		}
-
-		public abstract Func<string, string?> NewFileNameRetriever
-		{
-			get;
-		}
-
-		public static Protocol? ByName(string name) => (from protocol in ProtocolRegistry where string.Equals(protocol.Name, name, StringComparison.InvariantCultureIgnoreCase) select protocol).FirstOrDefault();
-
-		public static Protocol? ByPattern(string url) => (from protocol in ProtocolRegistry
-														  where protocol.Pattern?.IsMatch(url) ?? false
-														  select protocol).FirstOrDefault();
-
-		public override int GetHashCode() => HashCode.Combine(Name.GetHashCode(), Pattern?.GetHashCode());
-	}
-
-	public class DefaultProtocol : Protocol
-	{
-		public override string Name => "Default";
-		public override Regex? Pattern => null;
-		public override Func<string, string?> NewFileNameRetriever => (string _) => null;
-	}
-
-	public class TwitterProtocol : Protocol
-	{
-		public override string Name => "Twitter";
-		public override Regex? Pattern => new(@"(http:|https:)?(\/\/)?twitter\.com\/.*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-		public override Func<string, string?> NewFileNameRetriever => (string url) => url.Contains("pbs.twimg.com") ? $"{url[(url.LastIndexOf('/') + 1)..url.IndexOf('?')]}.{url[(url.IndexOf("format=") + 7)..url.IndexOf('&')]}" : null;
-	}
-
-	public class Target
-	{
-		public Protocol protocol;
-		public string ID;
-
-		public Target(string raw)
-		{
-			if (raw.Contains('|'))
-			{
-				string[] pieces = raw.Split('|');
-				ID = pieces[1];
-				protocol = Protocol.ByName(pieces[0]) ?? Protocol.ByPattern(ID) ?? Protocol.Default;
-			}
-			else
-			{
-				ID = raw;
-				protocol = Protocol.ByPattern(raw) ?? Protocol.Default;
-			}
-		}
-
-		public override int GetHashCode() => HashCode.Combine(protocol.GetHashCode(), ID.GetHashCode());
 	}
 }
