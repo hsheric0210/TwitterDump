@@ -21,14 +21,14 @@ namespace TwitterDump
 
 		public IniFile(string? IniPath = null) => Path = new FileInfo(IniPath ?? EXE + ".ini").FullName;
 
-		public string read(string Key, string? Section = null)
+		public string read(string Key, string? Section = null, string DefaultValue = "")
 		{
 			var RetVal = new StringBuilder(255);
 			GetPrivateProfileString(Section ?? EXE, Key, "", RetVal, 255, Path);
 			int lastError = GetLastError();
 			if (lastError != 0)
 				throw new Exception($"Failed to get value from configuration: Key={Key}, Section={Section ?? "null"}, Error=0x{lastError:X8}");
-			return RetVal.ToString().Trim();
+			return RetVal?.ToString()?.Trim() ?? DefaultValue;
 		}
 
 		public void write(string? Key, string? Value, string? Section = null) => WritePrivateProfileString(Section ?? EXE, Key, Value?.Trim(), Path);

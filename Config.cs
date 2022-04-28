@@ -5,99 +5,61 @@ namespace TwitterDump
 {
 	public class Config
 	{
-		private readonly IniFile config;
+		private const string Default_GalleryDL_Executable = "gallery-dl.exe";
+		private const string Default_GalleryDL_Parameters = "-G --no-download {0}";
+		private const string Default_Aria2_Executable = "aria2c.exe";
+		private const string Default_Aria2_Parameters = "-j 16 -x 4 -k 2M -s 8 --log=aria2-{1}.log --conditional-get true --allow-overwrite true --auto-file-renaming false --uri-selector=inorder --input-file={2} -d {0}";
+		private const string Default_Input_File = "list.txt";
+		private const string Default_Destination_Folder = ".\\Downloaded\\{0}";
 
+		public string GalleryDLExecutable;
+		public string GalleryDLParameters;
 
-		public string galleryDLExecutable;
-		public string galleryDLParameters;
+		public string Aria2Executable;
+		public string Aria2Parameters;
 
-		public string aria2Executable;
-		public string aria2Parameters;
-
-		public string imageListFolder;
-		public string imageListFile;
-		public string correctedImageListFile;
-
-		public string listFileName;
-		public string destinationFolder;
-
-		public bool twitterMode;
-
-		private string imageListFormat;
+		public string InputFileName;
+		public string DestinationFolder;
 
 		public Config(IniFile config)
 		{
-			this.config = config;
+			GalleryDLExecutable = config.read("Executable", "Gallery-DL", Default_GalleryDL_Executable);
+			GalleryDLParameters = config.read("Parameters", "Gallery-DL", Default_GalleryDL_Parameters);
 
-			galleryDLExecutable = config.read("Executable", "GalleryDL");
-			galleryDLParameters = config.read("Parameters", "GalleryDL");
+			Aria2Executable = config.read("Executable", "Aria2", Default_Aria2_Executable);
+			Aria2Parameters = config.read("Parameters", "Aria2", Default_Aria2_Parameters);
 
-			aria2Executable = config.read("Executable", "Aria2");
-			aria2Parameters = config.read("Parameters", "Aria2");
-
-			imageListFolder = config.read("ImageListFolder", "ImageURLList");
-			imageListFile = config.read("ImageListFile", "ImageURLList");
-			correctedImageListFile = config.read("CorrectedImageListFile", "ImageURLList");
-
-			listFileName = config.read("ListFile", "Misc");
-			destinationFolder = config.read("DestinationFolder", "Misc");
-
-			twitterMode = config.read("TwitterMode", "Misc").Equals("true");
-
-			imageListFormat = $"{imageListFolder}\\{{0}}";
+			InputFileName = config.read("ListFile", "Misc", Default_Input_File);
+			DestinationFolder = config.read("DestinationFolder", "Misc", Default_Destination_Folder);
 		}
 
-		public string getImageListFilePath(string memberID) => string.Format(imageListFormat, string.Format(imageListFile, memberID));
+		public string GetGalleryDLParameter(string memberID) => string.Format(GalleryDLParameters, memberID);
 
-		public string getCorrectedImageListFilePath(string memberID) => twitterMode ? string.Format(imageListFormat, string.Format(correctedImageListFile, memberID)) : getImageListFilePath(memberID);
+		public string GetAria2Parameter(string memberID, string inputFileName) => string.Format(Aria2Parameters, GetDestinationFolder(memberID), memberID.ToFileName(), inputFileName);
 
-		public string getGalleryDLParameter(string memberID) => string.Format(galleryDLParameters, memberID);
+		public string GetDestinationFolder(string memberID) => string.Format(DestinationFolder, memberID.ToFileName());
 
-		public string getAria2Parameter(string memberID) => string.Format(aria2Parameters, getCorrectedImageListFilePath(memberID), getDestinationFolder(memberID));
-
-		public string getDestinationFolder(string memberID) => string.Format(destinationFolder, memberID);
-
-		public static void saveDefaults(string path)
+		public static void SaveDefaults(string path)
 		{
 			var builder = new StringBuilder();
 
-			builder.AppendLine("[GalleryDL]");
-			
+			builder.AppendLine("[Gallery-DL]");
 			builder.AppendLine("; gallery-dl executable name");
-			builder.AppendLine("Executable=gallery-dl.exe");
-			
+			builder.Append("Executable=").AppendLine(Default_GalleryDL_Executable);
 			builder.AppendLine("; gallery-dl parameters");
-			builder.AppendLine("Parameters=-G --no-download https://twitter.com/{0}");
+			builder.Append("Parameters=").AppendLine(Default_GalleryDL_Parameters);
 
 			builder.AppendLine("[Aria2]");
-
 			builder.AppendLine("; aria2 executable name");
-			builder.AppendLine("Executable=aria2c.exe");
-
+			builder.Append("Executable=").AppendLine(Default_Aria2_Executable);
 			builder.AppendLine("; aria2 parameters");
-			builder.AppendLine("Parameters=-j 16 -x 4 -k 2M -s 8 --conditional-get true --allow-overwrite true --auto-file-renaming false --uri-selector=inorder -i {0} -d {1}");
-
-			builder.AppendLine("[ImageURLList]");
-
-			builder.AppendLine("; Image URL list folder");
-			builder.AppendLine("ImageListFolder=ImageList");
-
-			builder.AppendLine("; Image URL list path format");
-			builder.AppendLine("ImageListFile={0}.txt");
-
-			builder.AppendLine("; (Corrected) Image URL list path format");
-			builder.AppendLine("CorrectedImageListFile={0}.lst");
+			builder.Append("Parameters=").AppendLine(Default_Aria2_Parameters);
 
 			builder.AppendLine("[Misc]");
-
-			builder.AppendLine("; The file contains member IDs");
-			builder.AppendLine("ListFile=list.txt");
-
+			builder.AppendLine("; The file contains member IDs. Seperated by ';' character");
+			builder.Append("ListFile=").AppendLine(Default_Input_File);
 			builder.AppendLine("; Destination folder");
-			builder.AppendLine("DestinationFolder=.\\Downloaded\\{0}");
-
-			builder.AppendLine("; Twitter mode: Download media only via twimg.net; Append correct file extension to downloaded images after download phase is finished");
-			builder.AppendLine("TwitterMode=true");
+			builder.Append("DestinationFolder=").AppendLine(Default_Destination_Folder);
 
 			File.WriteAllText(path, builder.ToString());
 		}
