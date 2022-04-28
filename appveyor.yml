@@ -8,15 +8,15 @@ build_script:
 
     dotnet pack --include-symbols --include-source -c Release
 
-    dotnet publish -r win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishTrimmed=true -c Release
+    dotnet publish -r win-x64 --no-self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishTrimmed=true -c Release -o %APPVEYOR_BUILD_FOLDER%/bin/publish/x64
 
-    dotnet publish -r win-x86 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishTrimmed=true -c Release
+    dotnet publish -r win-x86 --no-self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishTrimmed=true -c Release -o %APPVEYOR_BUILD_FOLDER%/bin/publish/x86
 artifacts:
-- path: bin\Release\net6.0\win-x64\publish\TwitterDump.exe
+- path: bin\publish\x64\TwitterDump.exe
   name: 64-bit executable
-- path: bin\Release\net6.0\win-x64\publish\TwitterDump.pdb
+- path: bin\publish\x64\TwitterDump.pdb
   name: 64-bit debug symbol database
-- path: bin\Release\net6.0\win-x86\publish\TwitterDump.exe
+- path: bin\publish\x86\TwitterDump.exe
   name: 32-bit executable
-- path: bin\Release\net6.0\win-x86\publish\TwitterDump.pdb
+- path: bin\publish\x86\TwitterDump.pdb
   name: 32-bit debug symbol database
