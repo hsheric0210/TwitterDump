@@ -1,16 +1,18 @@
 ﻿version: 1.1 b{build}
 image: Visual Studio 2022
-configuration: Release
-platform:
-- x86
-- x64
-before_build:
-- cmd: nuget restore
-build:
-  project: TwitterDump.sln
-  parallel: true
-  verbosity: normal
-after_build:
-- cmd: 7z a -t7z -ms=on -mqs -slp -bt -bb3 -bsp1 -sae -m0=LZMA2 -mx=9 -myx=9 -md=128m -mfb=273 -mmt=8 -- Windows.%PLATFORM%.%CONFIGURATION%.7z %APPVEYOR_BUILD_FOLDER%\bin\%PLATFORM%\%CONFIGURATION%\net6.0\
+build_script:
+- cmd: >-
+    dotnet restore
+    dotnet build -c Release
+    dotnet pack --include-symbols --include-source -c Release
+    dotnet publish -r win-x64 -p:PublishSingleFile=true --self-contained true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishTrimmed=true -c Release
+	dotnet publish -r win-x86 -p:PublishSingleFile=true --self-contained true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishTrimmed=true -c Release
 artifacts:
-- path: Windows.%PLATFORM%.%CONFIGURATION%.7z
+- path: bin\Release\net6.0\win-x64\publish\TwitterDump.exe
+  name: 64-bit executable
+- path: bin\Release\net6.0\win-x64\publish\TwitterDump.pdb
+  name: 64-bit debug symbol database
+- path: bin\Release\net6.0\win-x86\publish\TwitterDump.exe
+  name: 32-bit executable
+- path: bin\Release\net6.0\win-x86\publish\TwitterDump.pdb
+  name: 32-bit debug symbol database
