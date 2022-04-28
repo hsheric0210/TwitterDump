@@ -8,9 +8,9 @@ build_script:
 
     dotnet pack --include-symbols --include-source -c Release
 
-    dotnet publish -r win-x64 --no-self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishTrimmed=true -c Release -o %APPVEYOR_BUILD_FOLDER%/bin/publish/x64
+    dotnet publish -r win-x64 --no-self-contained -p:PublishSingleFile=true -c Release -o %APPVEYOR_BUILD_FOLDER%/bin/publish/x64
 
-    dotnet publish -r win-x86 --no-self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishTrimmed=true -c Release -o %APPVEYOR_BUILD_FOLDER%/bin/publish/x86
+    dotnet publish -r win-x86 --no-self-contained -p:PublishSingleFile=true -c Release -o %APPVEYOR_BUILD_FOLDER%/bin/publish/x86
 artifacts:
 - path: bin\publish\x64\TwitterDump.exe
   name: 64-bit executable
