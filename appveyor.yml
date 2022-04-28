@@ -8,9 +8,9 @@ build_script:
 
     dotnet pack --include-symbols --include-source -c Release
 
-    dotnet publish -r win-x64 -p:PublishSingleFile=true --self-contained true -p:PublishTrimmed=true -c Release
+    dotnet publish -r win-x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishTrimmed=true -c Release
 
-    dotnet publish -r win-x86 -p:PublishSingleFile=true --self-contained true -p:PublishTrimmed=true -c Release
+    dotnet publish -r win-x86 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishTrimmed=true -c Release
 artifacts:
 - path: bin\Release\net6.0\win-x64\publish\TwitterDump.exe
   name: 64-bit executable
