@@ -1,9 +1,5 @@
-﻿
-using System.Collections.Concurrent;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text;
-using System.Text.RegularExpressions;
-using System.Linq;
 
 namespace TwitterDump
 {
@@ -13,7 +9,7 @@ namespace TwitterDump
 
 		public static void Main(string[] args) => MainAsync(args).Wait();
 
-		public async static Task MainAsync(string[] args)
+		public static async Task MainAsync(string[] args)
 		{
 			var configFileName = (args.Length > 0) ? args[0] : "TwitterDump.ini";
 			if (!File.Exists(configFileName))
@@ -62,11 +58,26 @@ namespace TwitterDump
 			var mainURLs = new List<(string, string?)>(urlCount);
 			var mirrorURLs = new Dictionary<string, List<string>>();
 			string? lastMainURL = null;
+			var duplicateCheckSet = new HashSet<string>();
 			foreach (string url in extractedURLs)
 			{
 				if (url.StartsWith("http", StringComparison.InvariantCultureIgnoreCase))
 				{
-					mainURLs.Add((lastMainURL = url.Trim(), target.protocol.NewFileNameRetriever(url)));
+					lastMainURL = url.Trim();
+					string? newFileName = target.protocol.NewFileNameRetriever(url);
+					string fileName = newFileName ?? url.ExtractFileName();
+
+					if (duplicateCheckSet.Contains(fileName))
+					{
+						Console.WriteLine($"Skipped '{fileName}' because it's already processed.");
+						continue;
+					}
+					else
+					{
+						mainURLs.Add((lastMainURL, newFileName));
+					}
+
+					duplicateCheckSet.Add(fileName);
 				}
 				else if (lastMainURL != null && url.StartsWith('|'))
 				{
@@ -120,14 +131,7 @@ namespace TwitterDump
 			aria2.StartInfo.FileName = config.Aria2Executable;
 			aria2.StartInfo.Arguments = config.GetAria2Parameter(target.ID, tmpFileName);
 			aria2.StartInfo.UseShellExecute = true;
-			//aria2.StartInfo.RedirectStandardInput = true;
-			//aria2.StartInfo.RedirectStandardOutput = true;
-			//aria2.StartInfo.RedirectStandardError = true;
 			aria2.Start();
-			// I don't know why this is not properly working
-			//var _input = string.Join(Environment.NewLine, input);
-			//await aria2.StandardInput.WriteLineAsync(_input);
-			//await aria2.StandardInput.FlushAsync();
 			await aria2.WaitForExitAsync();
 			File.Delete(tmpFileName);
 		}

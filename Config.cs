@@ -8,7 +8,7 @@ namespace TwitterDump
 		private const string Default_GalleryDL_Executable = "gallery-dl.exe";
 		private const string Default_GalleryDL_Parameters = "-G --no-download {0}";
 		private const string Default_Aria2_Executable = "aria2c.exe";
-		private const string Default_Aria2_Parameters = "-j 16 -x 4 -k 2M -s 8 --log=aria2-{1}.log --conditional-get true --allow-overwrite true --auto-file-renaming false --uri-selector=inorder --input-file={2} -d {0}";
+		private const string Default_Aria2_Parameters = "-j16 -x4 -k16M -s8 --log=aria2-{1}.log --allow-overwrite=true --conditional-get=true --remote-time=true --auto-file-renaming=false --uri-selector=inorder --input-file={2} -d {0}";
 		private const string Default_Input_File = "list.txt";
 		private const string Default_Destination_Folder = ".\\Downloaded\\{0}";
 
