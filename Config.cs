@@ -1,5 +1,4 @@
-﻿using System.Collections.Concurrent;
-using System.Text;
+﻿using System.Text;
 
 namespace TwitterDump
 {
@@ -11,15 +10,42 @@ namespace TwitterDump
 		private const string Default_Aria2_Parameters = "-j16 -x4 -k16M -s8 --log=aria2-{1}.log --allow-overwrite=true --conditional-get=true --remote-time=true --auto-file-renaming=false --uri-selector=inorder --input-file={2} -d {0}";
 		private const string Default_Input_File = "list.txt";
 		private const string Default_Destination_Folder = ".\\Downloaded\\{0}";
+		private const string Default_ExtractorAsDownloader = "false";
 
-		public string GalleryDLExecutable;
-		public string GalleryDLParameters;
+		public string GalleryDLExecutable
+		{
+			get; set;
+		}
 
-		public string Aria2Executable;
-		public string Aria2Parameters;
+		public string GalleryDLParameters
+		{
+			get; set;
+		}
 
-		public string InputFileName;
-		public string DestinationFolder;
+		public string Aria2Executable
+		{
+			get; set;
+		}
+
+		public string Aria2Parameters
+		{
+			get; set;
+		}
+
+		public string InputFileName
+		{
+			get; set;
+		}
+
+		public string DestinationFolder
+		{
+			get; set;
+		}
+
+		public bool ExtractorAsDownloader
+		{
+			get; set;
+		}
 
 		public Config(IniFile config)
 		{
@@ -31,6 +57,8 @@ namespace TwitterDump
 
 			InputFileName = config.read("ListFile", "Misc", Default_Input_File);
 			DestinationFolder = config.read("DestinationFolder", "Misc", Default_Destination_Folder);
+
+			ExtractorAsDownloader = Convert.ToBoolean(config.read("ExtractorAsDownloader", "Misc", Default_ExtractorAsDownloader));
 		}
 
 		public string GetGalleryDLParameter(string memberID) => string.Format(GalleryDLParameters, memberID);
@@ -60,6 +88,8 @@ namespace TwitterDump
 			builder.Append("ListFile=").AppendLine(Default_Input_File);
 			builder.AppendLine("; Destination folder");
 			builder.Append("DestinationFolder=").AppendLine(Default_Destination_Folder);
+			builder.AppendLine("; Use extractor as downloader");
+			builder.Append("ExtractorAsDownloader=").AppendLine(Default_ExtractorAsDownloader);
 
 			File.WriteAllText(path, builder.ToString());
 		}

@@ -26,21 +26,31 @@ namespace TwitterDump
 			string[] _targets = File.ReadAllLines(inputFileName);
 			IEnumerable<Target> targets = from target in _targets where !string.IsNullOrWhiteSpace(target) select new Target(target);
 
+			var extractorAsDownloader = config.ExtractorAsDownloader;
+
 			var tasks = new List<Task>();
 			foreach (Target target in targets)
 			{
 				tasks.Add(Task.Run(async () =>
 				{
-					Console.WriteLine($"Now retrieving: '{target.ID}'");
+					if (extractorAsDownloader)
+						Console.WriteLine($"Now downloading: '{target.ID}'");
+					else
+						Console.WriteLine($"Now retrieving: '{target.ID}'");
 					var extractionResult = await Extract(config, target);
-					Console.WriteLine($"Successfully retrieved: '{target.ID}'");
 
-					Console.WriteLine($"Now building aria2 input file: '{target.ID}'.");
-					List<string> aria2InputLines = MakeAria2InputFile(target, extractionResult);
-					Console.WriteLine($"Successfully built aria2 input file: '{target.ID}'.");
+					if (!extractorAsDownloader)
+					{
+						Console.WriteLine($"Successfully retrieved: '{target.ID}'");
 
-					Console.WriteLine($"Now downloading: '{target.ID}'");
-					await Download(config, target, aria2InputLines);
+						Console.WriteLine($"Now building aria2 input file: '{target.ID}'.");
+						List<string> aria2InputLines = MakeAria2InputFile(target, extractionResult);
+						Console.WriteLine($"Successfully built aria2 input file: '{target.ID}'.");
+
+						Console.WriteLine($"Now downloading: '{target.ID}'");
+						await Download(config, target, aria2InputLines);
+					}
+
 					Console.WriteLine($"Successfully downloaded: '{target.ID}'");
 				}));
 			}
@@ -105,7 +115,7 @@ namespace TwitterDump
 			return aria2InputLines;
 		}
 
-		private static async Task<string> Extract(Config config, Target target)
+		private static async Task<string?> Extract(Config config, Target target)
 		{
 			var gallery_dl = new Process();
 			gallery_dl.StartInfo.FileName = config.GalleryDLExecutable;
@@ -115,10 +125,18 @@ namespace TwitterDump
 
 			gallery_dl.Start();
 
-			using var stream = new MemoryStream();
-			await gallery_dl.StandardOutput.BaseStream.CopyToAsync(stream, 4096);
-			await gallery_dl.WaitForExitAsync();
-			return Encoding.UTF8.GetString(stream.ToArray());
+			if (config.ExtractorAsDownloader)
+			{
+				using var stream = new MemoryStream();
+				await gallery_dl.StandardOutput.BaseStream.CopyToAsync(stream, 4096);
+				await gallery_dl.WaitForExitAsync();
+				return Encoding.UTF8.GetString(stream.ToArray());
+			}
+			else
+			{
+				await gallery_dl.WaitForExitAsync();
+				return null;
+			}
 		}
 
 		private static async Task Download(Config config, Target target, List<string> input)
