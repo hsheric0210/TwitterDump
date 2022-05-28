@@ -55,9 +55,8 @@ namespace TwitterDump
 				}));
 			}
 
-			while (tasks.Count > 0)
-				tasks.Remove(await Task.WhenAny(tasks));
-
+			await Task.WhenAll(tasks);
+			
 			Console.WriteLine("Finished all jobs. Exiting...");
 		}
 
@@ -125,17 +124,17 @@ namespace TwitterDump
 
 			gallery_dl.Start();
 
-			if (!config.ExtractorAsDownloader)
+			if (config.ExtractorAsDownloader)
+			{
+				await gallery_dl.WaitForExitAsync();
+				return null;
+			}
+			else
 			{
 				using var stream = new MemoryStream();
 				await gallery_dl.StandardOutput.BaseStream.CopyToAsync(stream, 4096);
 				await gallery_dl.WaitForExitAsync();
 				return Encoding.UTF8.GetString(stream.ToArray());
-			}
-			else
-			{
-				await gallery_dl.WaitForExitAsync();
-				return null;
 			}
 		}
 
