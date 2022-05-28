@@ -44,7 +44,7 @@ namespace TwitterDump
 						Console.WriteLine($"Successfully retrieved: '{target.ID}'");
 
 						Console.WriteLine($"Now building aria2 input file: '{target.ID}'.");
-						List<string> aria2InputLines = MakeAria2InputFile(target, extractionResult);
+						List<string> aria2InputLines = MakeAria2InputFile(target, extractionResult!);
 						Console.WriteLine($"Successfully built aria2 input file: '{target.ID}'.");
 
 						Console.WriteLine($"Now downloading: '{target.ID}'");
@@ -125,7 +125,7 @@ namespace TwitterDump
 
 			gallery_dl.Start();
 
-			if (config.ExtractorAsDownloader)
+			if (!config.ExtractorAsDownloader)
 			{
 				using var stream = new MemoryStream();
 				await gallery_dl.StandardOutput.BaseStream.CopyToAsync(stream, 4096);
