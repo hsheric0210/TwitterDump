@@ -11,6 +11,7 @@ namespace TwitterDump
 		private const string Default_Input_File = "list.txt";
 		private const string Default_Destination_Folder = ".\\Downloaded\\{0}";
 		private const string Default_ExtractorAsDownloader = "false";
+		private const string Default_Parallellism = "6";
 
 		public string GalleryDLExecutable
 		{
@@ -47,6 +48,11 @@ namespace TwitterDump
 			get; set;
 		}
 
+		public int Parallellism
+		{
+			get; set;
+		}
+
 		public Config(IniFile config)
 		{
 			GalleryDLExecutable = config.read("Executable", "Gallery-DL", Default_GalleryDL_Executable);
@@ -59,6 +65,7 @@ namespace TwitterDump
 			DestinationFolder = config.read("DestinationFolder", "Misc", Default_Destination_Folder);
 
 			ExtractorAsDownloader = Convert.ToBoolean(config.read("ExtractorAsDownloader", "Misc", Default_ExtractorAsDownloader));
+			Parallellism = Convert.ToInt32(config.read("Parallellism", "Misc", Default_Parallellism));
 		}
 
 		public string GetGalleryDLParameter(string memberID) => string.Format(GalleryDLParameters, memberID);
@@ -90,6 +97,8 @@ namespace TwitterDump
 			builder.Append("DestinationFolder=").AppendLine(Default_Destination_Folder);
 			builder.AppendLine("; Use extractor as downloader");
 			builder.Append("ExtractorAsDownloader=").AppendLine(Default_ExtractorAsDownloader);
+			builder.AppendLine("; The count of task which will be executed in parallel");
+			builder.Append("Parallellism=").AppendLine(Default_Parallellism);
 
 			File.WriteAllText(path, builder.ToString());
 		}

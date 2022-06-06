@@ -29,34 +29,44 @@ namespace TwitterDump
 			var extractorAsDownloader = config.ExtractorAsDownloader;
 
 			var tasks = new List<Task>();
+			var semaphore = new SemaphoreSlim(config.Parallellism);
 			foreach (Target target in targets)
 			{
+				await semaphore.WaitAsync();
 				tasks.Add(Task.Run(async () =>
 				{
-					if (extractorAsDownloader)
-						Console.WriteLine($"Now downloading: '{target.ID}'");
-					else
-						Console.WriteLine($"Now retrieving: '{target.ID}'");
-					var extractionResult = await Extract(config, target);
-
-					if (!extractorAsDownloader)
+					try
 					{
-						Console.WriteLine($"Successfully retrieved: '{target.ID}'");
 
-						Console.WriteLine($"Now building aria2 input file: '{target.ID}'.");
-						List<string> aria2InputLines = MakeAria2InputFile(target, extractionResult!);
-						Console.WriteLine($"Successfully built aria2 input file: '{target.ID}'.");
+						if (extractorAsDownloader)
+							Console.WriteLine($"Now downloading: '{target.ID}'");
+						else
+							Console.WriteLine($"Now retrieving: '{target.ID}'");
+						var extractionResult = await Extract(config, target);
 
-						Console.WriteLine($"Now downloading: '{target.ID}'");
-						await Download(config, target, aria2InputLines);
+						if (!extractorAsDownloader)
+						{
+							Console.WriteLine($"Successfully retrieved: '{target.ID}'");
+
+							Console.WriteLine($"Now building aria2 input file: '{target.ID}'.");
+							List<string> aria2InputLines = MakeAria2InputFile(target, extractionResult!);
+							Console.WriteLine($"Successfully built aria2 input file: '{target.ID}'.");
+
+							Console.WriteLine($"Now downloading: '{target.ID}'");
+							await Download(config, target, aria2InputLines);
+						}
+
+						Console.WriteLine($"Successfully downloaded: '{target.ID}'");
 					}
-
-					Console.WriteLine($"Successfully downloaded: '{target.ID}'");
+					finally
+					{
+						semaphore.Release();
+					}
 				}));
 			}
 
 			await Task.WhenAll(tasks);
-			
+
 			Console.WriteLine("Finished all jobs. Exiting...");
 		}
 
