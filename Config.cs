@@ -4,101 +4,130 @@ namespace TwitterDump
 {
 	public class Config
 	{
-		private const string Default_GalleryDL_Executable = "gallery-dl.exe";
-		private const string Default_GalleryDL_Parameters = "-G --no-download {0}";
-		private const string Default_Aria2_Executable = "aria2c.exe";
-		private const string Default_Aria2_Parameters = "-j16 -x4 -k16M -s8 --log=aria2-{1}.log --allow-overwrite=true --conditional-get=true --remote-time=true --auto-file-renaming=false --uri-selector=inorder --input-file={2} -d {0}";
-		private const string Default_Input_File = "list.txt";
-		private const string Default_Destination_Folder = ".\\Downloaded\\{0}";
-		private const string Default_ExtractorAsDownloader = "false";
-		private const string Default_Parallellism = "6";
+		private const string GalleryDLSection = "Gallery-DL";
+		private const string GalleryDLExecutableKey = "GalleryDLExecutable";
+		private const string DefaultGalleryDLExecutable = "gallery-dl.exe";
+		private const string GalleryDLParametersKey = "GalleryDLParameters";
+		private const string DefaultGalleryDLParameters = "-G --no-download  --write-unsupported=\"unsupported.${memberIDFileName}.txt\" \"https://twitter.com/${memberID}\"";
 
-		public string GalleryDLExecutable
+		private const string Aria2Section = "Aria2";
+		private const string Aria2ExecutableKey = "Aria2Executable";
+		private const string DefaultAria2Executable = "aria2c.exe";
+		private const string Aria2ParametersKey = "Aria2Parmeters";
+		private const string DefaultAria2Parameters = "-j16 -x4 -l\"aria2.${memberIDFileName}.log\" -m0 --retry-wait=10 --allow-overwrite=true --conditional-get=true -Rtrue --auto-file-renaming=false --uri-selector=inorder -i${inputFileName} -d${destination}";
+
+		private const string MiscSection = "Misc";
+		private const string InputFileKey = "ListFile";
+		private const string DefaultInputFile = "list.txt";
+		private const string DestinationFolderKey = "Destination";
+		private const string DefaultDestinationFolder = ".\\Downloaded\\${memberIDFileName}";
+		private const string ExtractorAsDownloaderKey = "ExtractorAsDownloader";
+		private const bool DefaultExtractorAsDownloader = false;
+		private const string ExtractorParallellismKey = "ExtractorParallellsim";
+		private const int DefaultExtractorParallellism = 6;
+		private const string DownloaderParallellismKey = "DownloaderParallellsim";
+		private const int DefaultDownloaderParallellism = 4;
+
+		private readonly IniFile Ini;
+
+		public string GalleryDLExecutable => ParseString(GalleryDLExecutableKey, GalleryDLSection, DefaultGalleryDLExecutable);
+
+		public string GalleryDLParameters => ParseString(GalleryDLParametersKey, GalleryDLSection, DefaultGalleryDLParameters);
+
+		public string Aria2Executable => ParseString(Aria2ExecutableKey, Aria2Section, DefaultAria2Executable);
+
+		public string Aria2Parameters => ParseString(Aria2ParametersKey, Aria2Section, DefaultAria2Parameters);
+
+		public string InputFileName => ParseString(InputFileKey, MiscSection, DefaultInputFile);
+
+		public string DestinationFolder => ParseString(DestinationFolderKey, MiscSection, DefaultDestinationFolder);
+
+		public bool ExtractorAsDownloader => ParseBool(ExtractorAsDownloaderKey, MiscSection, DefaultExtractorAsDownloader);
+
+		public int ExtractorParallellism => ParseInt(ExtractorParallellismKey, MiscSection, DefaultExtractorParallellism);
+
+		public int DownloaderParallellism => ParseInt(DownloaderParallellismKey, MiscSection, DefaultDownloaderParallellism);
+
+		public Config(IniFile config) => Ini = config;
+
+		private int ParseInt(string key, string section, int defaultValue)
 		{
-			get; set;
+			if (Ini.KeyExists(key, section) && int.TryParse(Ini.Read(key, section), out int result))
+				return result;
+			Ini.Write(key, defaultValue, section);
+			return defaultValue;
 		}
 
-		public string GalleryDLParameters
+		private bool ParseBool(string key, string section, bool defaultValue)
 		{
-			get; set;
+			if (Ini.KeyExists(key, section) && bool.TryParse(Ini.Read(key, section), out bool result))
+				return result;
+			Ini.Write(key, defaultValue, section);
+			return defaultValue;
 		}
 
-		public string Aria2Executable
+		private string ParseString(string key, string section, string defaultValue)
 		{
-			get; set;
+			if (Ini.KeyExists(key, section))
+				return Ini.Read(key, section);
+			Ini.Write(key, defaultValue, section);
+			return defaultValue;
 		}
 
-		public string Aria2Parameters
+		public string GetGalleryDLParameter(string memberID) => FormatTokens(GalleryDLParameters, new Dictionary<string, string>
 		{
-			get; set;
+			["memberID"] = memberID,
+			["memberIDFileName"] = memberID.ToFileName()
+		});
+
+		public string GetAria2Parameter(string memberID, string inputFileName) => FormatTokens(Aria2Parameters, new Dictionary<string, string>
+		{
+			["memberID"] = memberID,
+			["memberIDFileName"] = memberID.ToFileName(),
+			["inputFileName"] = inputFileName,
+			["destination"] = GetDestinationFolder(memberID)
+		});
+
+		public string GetDestinationFolder(string memberID) => FormatTokens(DestinationFolder, new Dictionary<string, string>
+		{
+			["memberID"] = memberID,
+			["memberIDFileName"] = memberID.ToFileName()
+		});
+
+		private static string FormatTokens(string format, IDictionary<string, string> tokens)
+		{
+			foreach (KeyValuePair<string, string> token in tokens)
+				format = format.Replace($"${{{token.Key}}}", token.Value);
+			return format;
 		}
 
-		public string InputFileName
-		{
-			get; set;
-		}
-
-		public string DestinationFolder
-		{
-			get; set;
-		}
-
-		public bool ExtractorAsDownloader
-		{
-			get; set;
-		}
-
-		public int Parallellism
-		{
-			get; set;
-		}
-
-		public Config(IniFile config)
-		{
-			GalleryDLExecutable = config.read("Executable", "Gallery-DL", Default_GalleryDL_Executable);
-			GalleryDLParameters = config.read("Parameters", "Gallery-DL", Default_GalleryDL_Parameters);
-
-			Aria2Executable = config.read("Executable", "Aria2", Default_Aria2_Executable);
-			Aria2Parameters = config.read("Parameters", "Aria2", Default_Aria2_Parameters);
-
-			InputFileName = config.read("ListFile", "Misc", Default_Input_File);
-			DestinationFolder = config.read("DestinationFolder", "Misc", Default_Destination_Folder);
-
-			ExtractorAsDownloader = Convert.ToBoolean(config.read("ExtractorAsDownloader", "Misc", Default_ExtractorAsDownloader));
-			Parallellism = Convert.ToInt32(config.read("Parallellism", "Misc", Default_Parallellism));
-		}
-
-		public string GetGalleryDLParameter(string memberID) => string.Format(GalleryDLParameters, memberID);
-
-		public string GetAria2Parameter(string memberID, string inputFileName) => string.Format(Aria2Parameters, GetDestinationFolder(memberID), memberID.ToFileName(), inputFileName);
-
-		public string GetDestinationFolder(string memberID) => string.Format(DestinationFolder, memberID.ToFileName());
-
-		public static void SaveDefaults(string path)
+		public static void SavePrettyDefaults(string path)
 		{
 			var builder = new StringBuilder();
 
-			builder.AppendLine("[Gallery-DL]");
-			builder.AppendLine("; gallery-dl executable name");
-			builder.Append("Executable=").AppendLine(Default_GalleryDL_Executable);
-			builder.AppendLine("; gallery-dl parameters");
-			builder.Append("Parameters=").AppendLine(Default_GalleryDL_Parameters);
+			builder.Append('[').Append(GalleryDLSection).AppendLine("]");
+			builder.AppendLine("; Gallery-DL executable path.");
+			builder.Append(GalleryDLExecutableKey).Append('=').AppendLine(DefaultGalleryDLExecutable);
+			builder.AppendLine("; Gallery-DL parameters.");
+			builder.Append(GalleryDLParametersKey).Append('=').AppendLine(DefaultGalleryDLParameters);
 
-			builder.AppendLine("[Aria2]");
-			builder.AppendLine("; aria2 executable name");
-			builder.Append("Executable=").AppendLine(Default_Aria2_Executable);
-			builder.AppendLine("; aria2 parameters");
-			builder.Append("Parameters=").AppendLine(Default_Aria2_Parameters);
+			builder.Append('[').Append(Aria2Section).AppendLine("]");
+			builder.AppendLine("; Aria2 executable path.");
+			builder.Append(Aria2ExecutableKey).Append('=').AppendLine(DefaultAria2Executable);
+			builder.AppendLine("; Aria2 parameters.");
+			builder.Append(Aria2ParametersKey).Append('=').AppendLine(DefaultAria2Parameters);
 
-			builder.AppendLine("[Misc]");
-			builder.AppendLine("; The file contains member IDs. Seperated by ';' character");
-			builder.Append("ListFile=").AppendLine(Default_Input_File);
-			builder.AppendLine("; Destination folder");
-			builder.Append("DestinationFolder=").AppendLine(Default_Destination_Folder);
-			builder.AppendLine("; Use extractor as downloader");
-			builder.Append("ExtractorAsDownloader=").AppendLine(Default_ExtractorAsDownloader);
-			builder.AppendLine("; The count of task which will be executed in parallel");
-			builder.Append("Parallellism=").AppendLine(Default_Parallellism);
+			builder.Append('[').Append(MiscSection).AppendLine("]");
+			builder.AppendLine("; The file contains member IDs. Each IDs should be separated with line breaks.");
+			builder.Append(InputFileKey).Append('=').AppendLine(DefaultInputFile);
+			builder.AppendLine("; Destination folder.");
+			builder.Append(DestinationFolderKey).Append('=').AppendLine(DefaultDestinationFolder);
+			builder.AppendLine("; Use extractor as downloader.");
+			builder.Append(ExtractorAsDownloaderKey).Append('=').AppendLine(DefaultExtractorAsDownloader.ToString());
+			builder.AppendLine("; Limits the maximum count of extractor tasks which would run in parallel.");
+			builder.Append(ExtractorParallellismKey).Append('=').AppendLine(DefaultExtractorParallellism.ToString());
+			builder.AppendLine("; Limits the maximum count of downloader tasks which would run in parallel.");
+			builder.Append(DownloaderParallellismKey).Append('=').AppendLine(DefaultDownloaderParallellism.ToString());
 
 			File.WriteAllText(path, builder.ToString());
 		}

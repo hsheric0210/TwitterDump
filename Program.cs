@@ -13,7 +13,7 @@ namespace TwitterDump
 		{
 			var configFileName = (args.Length > 0) ? args[0] : "TwitterDump.ini";
 			if (!File.Exists(configFileName))
-				Config.SaveDefaults(configFileName);
+				Config.SavePrettyDefaults(configFileName);
 
 			Console.WriteLine($"Reading configuration file: {configFileName}");
 			var config = new Config(new IniFile(configFileName));
@@ -29,45 +29,70 @@ namespace TwitterDump
 			var extractorAsDownloader = config.ExtractorAsDownloader;
 
 			var tasks = new List<Task>();
-			var semaphore = new SemaphoreSlim(config.Parallellism);
+			using var extractorParallellismLimiter = new SemaphoreSlim(config.ExtractorParallellism);
+			using var downloaderParallellismLimiter = new SemaphoreSlim(config.DownloaderParallellism);
 			foreach (Target target in targets)
 			{
-				await semaphore.WaitAsync();
 				tasks.Add(Task.Run(async () =>
 				{
-					try
-					{
-
-						if (extractorAsDownloader)
-							Console.WriteLine($"Now downloading: '{target.ID}'");
-						else
-							Console.WriteLine($"Now retrieving: '{target.ID}'");
-						var extractionResult = await Extract(config, target);
-
-						if (!extractorAsDownloader)
-						{
-							Console.WriteLine($"Successfully retrieved: '{target.ID}'");
-
-							Console.WriteLine($"Now building aria2 input file: '{target.ID}'.");
-							List<string> aria2InputLines = MakeAria2InputFile(target, extractionResult!);
-							Console.WriteLine($"Successfully built aria2 input file: '{target.ID}'.");
-
-							Console.WriteLine($"Now downloading: '{target.ID}'");
-							await Download(config, target, aria2InputLines);
-						}
-
-						Console.WriteLine($"Successfully downloaded: '{target.ID}'");
-					}
-					finally
-					{
-						semaphore.Release();
-					}
+					List<string>? aria2InputLines = await RetrieveTask(config, target, extractorParallellismLimiter, extractorAsDownloader);
+					if (aria2InputLines != null)
+						await DownloadTask(config, target, aria2InputLines, downloaderParallellismLimiter);
 				}));
 			}
 
 			await Task.WhenAll(tasks);
 
 			Console.WriteLine("Finished all jobs. Exiting...");
+		}
+
+		private static async Task DownloadTask(Config config, Target target, List<string> aria2InputLines, SemaphoreSlim downloaderParallellismLimiter)
+		{
+			Console.WriteLine("Waiting for downloader parallellism semaphore...");
+			await downloaderParallellismLimiter.WaitAsync();
+
+			// Enqueue download task
+			Console.WriteLine($"Now downloading: '{target.ID}'");
+			try
+			{
+				await Download(config, target, aria2InputLines);
+				Console.WriteLine($"Successfully downloaded: '{target.ID}'");
+			}
+			finally
+			{
+				downloaderParallellismLimiter.Release();
+			}
+		}
+
+		private static async Task<List<string>?> RetrieveTask(Config config, Target target, SemaphoreSlim semaphore, bool extractorAsDownloader)
+		{
+			await semaphore.WaitAsync();
+
+			try
+			{
+				Console.WriteLine($"Now retrieving{(extractorAsDownloader ? " & downloading" : "")}: {target.ID}");
+
+				// Retrieve media CDN URL.
+				var extractionResult = await Extract(config, target);
+
+				if (!extractorAsDownloader)
+				{
+					Console.WriteLine($"Successfully retrieved: '{target.ID}'");
+
+					// Build the aria2 batch input file.
+					Console.WriteLine($"Now building aria2 input file: '{target.ID}'.");
+					List<string> result = MakeAria2InputFile(target, extractionResult!);
+					Console.WriteLine($"Successfully built aria2 input file: '{target.ID}'.");
+
+					return result;
+				}
+			}
+			finally
+			{
+				semaphore.Release();
+			}
+
+			return null;
 		}
 
 		private static List<string> MakeAria2InputFile(Target target, string extractionResult)
