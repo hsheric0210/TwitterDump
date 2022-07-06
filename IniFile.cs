@@ -24,8 +24,8 @@ namespace TwitterDump
 
 		public string Read(string Key, string? Section = null, bool silent = false)
 		{
-			var RetVal = new StringBuilder(255);
-			_ = GetPrivateProfileString(Section ?? EXE, Key, "", RetVal, 255, Path);
+			var RetVal = new StringBuilder(1024);
+			_ = GetPrivateProfileString(Section ?? EXE, Key, "", RetVal, 1024, Path);
 			if (!silent)
 			{
 				int lastError = GetLastError();
