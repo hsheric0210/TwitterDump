@@ -9,8 +9,9 @@ namespace TwitterDump.Protocols
 
 		private static AbstractProtocol[] InitializeProtocolRegistry()
 		{
-			var registry = new AbstractProtocol[1];
+			var registry = new AbstractProtocol[2];
 			registry[0] = new TwitterProtocol();
+			registry[1] = new Rule34PahealProtocol();
 			return registry;
 		}
 
