@@ -1,62 +1,117 @@
 ﻿using System.Diagnostics;
 using System.Text;
+using System.Linq;
+using System.Text.Json;
+using Serilog;
+using Serilog.Sinks.SystemConsole.Themes;
 
 namespace TwitterDump
 {
 	public static class Program
 	{
 		public static readonly string[] LineSeparators = new string[3] { "\r\n", "\r", "\n" };
+		private static readonly JsonSerializerOptions JsonOptions = new()
+		{
+			WriteIndented = true
+		};
+
+		public static Config TheConfig
+		{
+			get; private set;
+		} = null!;
 
 		public static void Main(string[] args) => MainAsync(args).Wait();
 
+		private static bool HasCmdSwitch(string[] args, string switchStr)
+		{
+			return args.Any(arg => arg.StartsWith("-" + switchStr, StringComparison.OrdinalIgnoreCase) || arg.StartsWith("/" + switchStr, StringComparison.OrdinalIgnoreCase));
+		}
+
+		private static string GetCmdSwitch(string[] args, string switchStr, string defaultValue)
+		{
+			return (from arg in args where arg.StartsWith("-" + switchStr, StringComparison.OrdinalIgnoreCase) || arg.StartsWith("/" + switchStr, StringComparison.OrdinalIgnoreCase) select arg[(switchStr.Length + 1)..]).FirstOrDefault(defaultValue);
+		}
+
 		public static async Task MainAsync(string[] args)
 		{
-			var configFileName = (args.Length > 0) ? args[0] : "TwitterDump.ini";
-			if (!File.Exists(configFileName))
-				Config.SavePrettyDefaults(configFileName);
+			TheConfig = new Config();
 
-			Console.WriteLine($"Reading configuration file: {configFileName}");
-			var config = new Config(new IniFile(configFileName));
+			Log.Logger = new LoggerConfiguration()
+				.MinimumLevel.Debug()
+				.WriteTo.File(GetCmdSwitch(args, "l", "TwitterDump.log"), buffered: true, flushToDiskInterval: TimeSpan.FromMilliseconds(100), fileSizeLimitBytes: 16777216 /* 128MB */, rollOnFileSizeLimit: true)
+				.WriteTo.Console(theme: AnsiConsoleTheme.Code)
+				.CreateLogger();
 
-			string inputFileName = config.InputFileName;
-			if (CheckFileExistence(config.GalleryDLExecutable, "Gallery-DL executable") || CheckFileExistence(config.Aria2Executable, "Aria2 Executable") || CheckFileExistence(inputFileName, "Member ID list"))
+			var configFileName = GetCmdSwitch(args, "c", "TwitterDump.json");
+			if (!File.Exists(configFileName) || HasCmdSwitch(args, "gc"))
+			{
+				try
+				{
+					Log.Information("Exporting default config file to {file}.", configFileName);
+					await File.WriteAllTextAsync(configFileName, JsonSerializer.Serialize(TheConfig, JsonOptions));
+				}
+				catch (Exception e)
+				{
+					Log.Error(e, "An exception occurred during exporting default config file.");
+				}
+
+				return;
+			}
+
+			Log.Information("Using configuration file {file}.", configFileName);
+			try
+			{
+				string data = await File.ReadAllTextAsync(configFileName);
+				Config? parsed = JsonSerializer.Deserialize<Config>(data, JsonOptions);
+				if (parsed == null)
+					Log.Warning("Json deserializer returned null! Using default config instead.");
+				else
+					TheConfig = parsed;
+			}
+			catch (Exception e)
+			{
+				Log.Error(e, "An exception occurred during config parse.");
+			}
+
+			string inputFileName = TheConfig.ListFile;
+			if (CheckFileExistence(TheConfig.Retriever.Executable, "Gallery-DL executable") || CheckFileExistence(TheConfig.Downloader.Executable, "Aria2 Executable") || CheckFileExistence(inputFileName, "Member ID list"))
 				return;
 
-			Console.WriteLine($"Reading input file: {inputFileName}");
+			Log.Information("Reading list file {file}.", inputFileName);
 			string[] _targets = File.ReadAllLines(inputFileName);
 			IEnumerable<Target> targets = from target in _targets where !string.IsNullOrWhiteSpace(target) select new Target(target);
 
-			var extractorAsDownloader = config.ExtractorAsDownloader;
+			var useRetrieverAsDownloader = TheConfig.UseRetrieverIntegratedDownloader;
 
 			var tasks = new List<Task>();
-			using var extractorParallellismLimiter = new SemaphoreSlim(config.ExtractorParallellism);
-			using var downloaderParallellismLimiter = new SemaphoreSlim(config.DownloaderParallellism);
+			using var retrieverParallellismLimiter = new SemaphoreSlim(TheConfig.Parallelism.RetrieverParallelism);
+			using var downloaderParallellismLimiter = new SemaphoreSlim(TheConfig.Parallelism.DownloaderParallelism);
 			foreach (Target target in targets)
 			{
 				tasks.Add(Task.Run(async () =>
 				{
-					List<string>? aria2InputLines = await RetrieveTask(config, target, extractorParallellismLimiter, extractorAsDownloader);
-					if (aria2InputLines != null)
-						await DownloadTask(config, target, aria2InputLines, downloaderParallellismLimiter);
+					List<string>? downloadListLines = await RetrieveTask(TheConfig, target, retrieverParallellismLimiter, useRetrieverAsDownloader);
+					if (downloadListLines != null)
+						await DownloadTask(TheConfig, target, downloadListLines, downloaderParallellismLimiter);
 				}));
 			}
 
 			await Task.WhenAll(tasks);
 
-			Console.WriteLine("Finished all jobs. Exiting...");
+			Log.Information("Finished all jobs. Exiting...");
 		}
 
 		private static async Task DownloadTask(Config config, Target target, List<string> aria2InputLines, SemaphoreSlim downloaderParallellismLimiter)
 		{
-			Console.WriteLine("Waiting for downloader parallellism semaphore...");
+			Log.Debug("Waiting for downloader parallellism semaphore...");
 			await downloaderParallellismLimiter.WaitAsync();
 
 			// Enqueue download task
-			Console.WriteLine($"Now downloading: '{target.ID}'");
+			Log.Information("Now downloading: {id}.", target.ID);
 			try
 			{
 				await Download(config, target, aria2InputLines);
-				Console.WriteLine($"Successfully downloaded: '{target.ID}'");
+				Log.Information("Successfully downloaded: {id}.", target.ID);
 			}
 			finally
 			{
@@ -64,26 +119,24 @@ namespace TwitterDump
 			}
 		}
 
-		private static async Task<List<string>?> RetrieveTask(Config config, Target target, SemaphoreSlim semaphore, bool extractorAsDownloader)
+		private static async Task<List<string>?> RetrieveTask(Config config, Target target, SemaphoreSlim semaphore, bool useRetrieverAsDownloader)
 		{
 			await semaphore.WaitAsync();
 
 			try
 			{
-				Console.WriteLine($"Now retrieving{(extractorAsDownloader ? " & downloading" : "")}: {target.ID}");
+				Log.Information("Now retrieving: {id}", target.ID);
 
 				// Retrieve media CDN URL.
-				var extractionResult = await Extract(config, target);
+				var retrievedResult = await Retrieve(config, target);
 
-				if (!extractorAsDownloader)
+				if (!useRetrieverAsDownloader)
 				{
-					Console.WriteLine($"Successfully retrieved: '{target.ID}'");
+					Log.Information("Successfully retrieved: {id}.", target.ID);
 
-					// Build the aria2 batch input file.
-					Console.WriteLine($"Now building aria2 input file: '{target.ID}'.");
-					List<string> result = MakeAria2InputFile(target, extractionResult!);
-					Console.WriteLine($"Successfully built aria2 input file: '{target.ID}'.");
-
+					Log.Information("Building download list: {id}.", target.ID);
+					List<string> result = MakeDownloadList(target, retrievedResult!);
+					Log.Information("Successfully built download list: {id}.", target.ID);
 					return result;
 				}
 			}
@@ -95,15 +148,15 @@ namespace TwitterDump
 			return null;
 		}
 
-		private static List<string> MakeAria2InputFile(Target target, string extractionResult)
+		private static List<string> MakeDownloadList(Target target, string retrievedResult)
 		{
-			string[] extractedURLs = extractionResult.Split(LineSeparators, StringSplitOptions.TrimEntries);
-			int urlCount = extractedURLs.Length;
+			string[] retrievedURLs = retrievedResult.Split(LineSeparators, StringSplitOptions.TrimEntries);
+			int urlCount = retrievedURLs.Length;
 			var mainURLs = new List<(string, string?)>(urlCount);
 			var mirrorURLs = new Dictionary<string, List<string>>();
 			string? lastMainURL = null;
 			var duplicateCheckSet = new HashSet<string>();
-			foreach (string url in extractedURLs)
+			foreach (string url in retrievedURLs)
 			{
 				if (url.StartsWith("http", StringComparison.InvariantCultureIgnoreCase))
 				{
@@ -111,9 +164,19 @@ namespace TwitterDump
 					string? newFileName = target.protocol.NewFileNameRetriever(url);
 					string fileName = newFileName ?? url.ExtractFileName();
 
+					if (TheConfig.SkipAlreadyExists)
+					{
+						string path = Path.Combine(TheConfig.Destination.FormatDestination(target.ID), fileName);
+						if (new FileInfo(path).Exists)
+						{
+							Log.Warning("File {file} already exists! Skipping media {media} of member {member}.", path, fileName, target.ID);
+							continue;
+						}
+					}
+
 					if (duplicateCheckSet.Contains(fileName))
 					{
-						Console.WriteLine($"Skipped '{fileName}' because it's already processed.");
+						Log.Warning("Skipped {file} as it's already processed previously.", fileName);
 						continue;
 					}
 					else
@@ -149,17 +212,17 @@ namespace TwitterDump
 			return aria2InputLines;
 		}
 
-		private static async Task<string?> Extract(Config config, Target target)
+		private static async Task<string?> Retrieve(Config config, Target target)
 		{
 			var gallery_dl = new Process();
-			gallery_dl.StartInfo.FileName = config.GalleryDLExecutable;
-			gallery_dl.StartInfo.Arguments = config.GetGalleryDLParameter(target.ID);
+			gallery_dl.StartInfo.FileName = config.Retriever.Executable;
+			gallery_dl.StartInfo.Arguments = config.Retriever.Parameters.FormatRetriverParameters(target.ID);
 			gallery_dl.StartInfo.UseShellExecute = false;
 			gallery_dl.StartInfo.RedirectStandardOutput = true;
 
 			gallery_dl.Start();
 
-			if (config.ExtractorAsDownloader)
+			if (config.UseRetrieverIntegratedDownloader)
 			{
 				await gallery_dl.WaitForExitAsync();
 				return null;
@@ -180,8 +243,8 @@ namespace TwitterDump
 			await File.WriteAllLinesAsync(tmpFileName, input);
 
 			var aria2 = new Process();
-			aria2.StartInfo.FileName = config.Aria2Executable;
-			aria2.StartInfo.Arguments = config.GetAria2Parameter(target.ID, tmpFileName);
+			aria2.StartInfo.FileName = config.Downloader.Executable;
+			aria2.StartInfo.Arguments = FormatDownloaderParameters(config.Downloader.Parameters, target.ID, tmpFileName, config.Destination);
 			aria2.StartInfo.UseShellExecute = true;
 			aria2.Start();
 			await aria2.WaitForExitAsync();
@@ -192,18 +255,37 @@ namespace TwitterDump
 		{
 			if (!File.Exists(fileName))
 			{
-				PrintError($"File {fileName}({description}) not found");
+				Log.Fatal("File {file} ({desc}) not found! The program will exit.", fileName, description);
 				return true;
 			}
 			return false;
 		}
 
-		private static void PrintError(string message)
+		public static string FormatRetriverParameters(this string format, string memberID) => format.FormatTokens(new Dictionary<string, string>
 		{
-			ConsoleColor prevColor = Console.ForegroundColor;
-			Console.ForegroundColor = ConsoleColor.Red;
-			Console.WriteLine(message);
-			Console.ForegroundColor = prevColor;
+			["memberID"] = memberID,
+			["memberIDFileName"] = memberID.ToFileName()
+		});
+
+		public static string FormatDownloaderParameters(this string format, string memberID, string inputFileName, string destinationFormat) => format.FormatTokens(new Dictionary<string, string>
+		{
+			["memberID"] = memberID,
+			["memberIDFileName"] = memberID.ToFileName(),
+			["inputFileName"] = inputFileName,
+			["destination"] = destinationFormat.FormatDestination(memberID)
+		});
+
+		public static string FormatDestination(this string format, string memberID) => format.FormatTokens(new Dictionary<string, string>
+		{
+			["memberID"] = memberID,
+			["memberIDFileName"] = memberID.ToFileName()
+		});
+
+		private static string FormatTokens(this string format, IDictionary<string, string> tokens)
+		{
+			foreach (KeyValuePair<string, string> token in tokens)
+				format = format.Replace($"${{{token.Key}}}", token.Value, StringComparison.OrdinalIgnoreCase);
+			return format;
 		}
 	}
 }
