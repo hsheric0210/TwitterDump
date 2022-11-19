@@ -14,10 +14,16 @@ namespace TwitterDump.Protocols
 		{
 			Match match = CdnPattern!.Match(cdnURL);
 			if (match.Success)
-				return $"{match.Groups[0].Value}.{match.Groups[1].Value}";
+				return $"{match.Groups[1].Value}.{match.Groups[2].Value}";
 			return null;
 		};
 
-		public override Func<string, string?> MemberNameRetriever => (string _) => null;
+		public override Func<string, string?> MemberNameRetriever => (string memberURL) =>
+		{
+			Match match = Pattern!.Match(memberURL);
+			if (match.Success)
+				return match.Groups[1].Value;
+			return null;
+		};
 	}
 }

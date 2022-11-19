@@ -22,6 +22,11 @@
 			get; set;
 		} = false;
 
+		public bool KeepDownloadListFile
+		{
+			get; set;
+		} = false;
+
 		public RetrieverSection Retriever
 		{
 			get; set;
@@ -61,7 +66,7 @@
 		public string Parameters
 		{
 			get; set;
-		} = "-j16 -x4 -l\"aria2.${memberIDFileName}.log\" -m0 --retry-wait=10 --allow-overwrite=true --conditional-get=true -Rtrue --auto-file-renaming=false --uri-selector=inorder -i${inputFileName} -d${destination}";
+		} = "-j16 -x4 -l\"aria2.${memberIDFileName}.log\" -m0 --retry-wait=10 --allow-overwrite=true --conditional-get=true -Rtrue --auto-file-renaming=false --uri-selector=inorder -i\"${inputFileName}\" -d\"${destination}\"";
 	}
 
 	public class ParallelismSection

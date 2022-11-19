@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using Serilog;
 using Serilog.Sinks.SystemConsole.Themes;
+using Serilog.Events;
 
 namespace TwitterDump
 {
@@ -37,70 +38,85 @@ namespace TwitterDump
 			TheConfig = new Config();
 
 			Log.Logger = new LoggerConfiguration()
-				.MinimumLevel.Debug()
+				.MinimumLevel.Verbose()
 				.WriteTo.Async(opt => opt.File(GetCmdSwitch(args, "l", "TwitterDump.log"), buffered: true, flushToDiskInterval: TimeSpan.FromMilliseconds(100), fileSizeLimitBytes: 16777216 /* 128MB */, rollOnFileSizeLimit: true), bufferSize: 8192)
-				.WriteTo.Async(opt => opt.Console(theme: AnsiConsoleTheme.Code), bufferSize: 16384)
+				.WriteTo.Async(opt => opt.Console(restrictedToMinimumLevel: LogEventLevel.Information, theme: AnsiConsoleTheme.Code), bufferSize: 16384)
 				.CreateLogger();
 
-			var configFileName = GetCmdSwitch(args, "c", "TwitterDump.json");
-			if (!File.Exists(configFileName) || HasCmdSwitch(args, "gc"))
+			try
 			{
+				var configFileName = GetCmdSwitch(args, "c", "TwitterDump.json");
+				if (!File.Exists(configFileName) || HasCmdSwitch(args, "gc"))
+				{
+					try
+					{
+						Log.Information("Exporting default config file to {file}.", configFileName);
+						await File.WriteAllTextAsync(configFileName, JsonSerializer.Serialize(TheConfig, JsonOptions));
+					}
+					catch (Exception e)
+					{
+						Log.Error(e, "An exception occurred during exporting default config file.");
+					}
+
+					await Log.CloseAndFlushAsync();
+					return;
+				}
+
+				Log.Information("Using configuration file {file}.", configFileName);
 				try
 				{
-					Log.Information("Exporting default config file to {file}.", configFileName);
-					await File.WriteAllTextAsync(configFileName, JsonSerializer.Serialize(TheConfig, JsonOptions));
+					string data = await File.ReadAllTextAsync(configFileName);
+					Config? parsed = JsonSerializer.Deserialize<Config>(data, JsonOptions);
+					if (parsed == null)
+						Log.Warning("Json deserializer returned null! Using default config instead.");
+					else
+						TheConfig = parsed;
 				}
 				catch (Exception e)
 				{
-					Log.Error(e, "An exception occurred during exporting default config file.");
+					Log.Error(e, "An exception occurred during config parse.");
 				}
 
-				return;
-			}
+				string inputFileName = TheConfig.ListFile;
+				if (CheckFileExistence(TheConfig.Retriever.Executable, "Gallery-DL executable") || CheckFileExistence(TheConfig.Downloader.Executable, "Aria2 Executable") || CheckFileExistence(inputFileName, "Member ID list"))
+				{
+					await Log.CloseAndFlushAsync();
+					return;
+				}
 
-			Log.Information("Using configuration file {file}.", configFileName);
-			try
-			{
-				string data = await File.ReadAllTextAsync(configFileName);
-				Config? parsed = JsonSerializer.Deserialize<Config>(data, JsonOptions);
-				if (parsed == null)
-					Log.Warning("Json deserializer returned null! Using default config instead.");
-				else
-					TheConfig = parsed;
+				Log.Information("Reading list file {file}.", inputFileName);
+				string[] _targets = File.ReadAllLines(inputFileName);
+				IEnumerable<Target> targets = from target in _targets where !string.IsNullOrWhiteSpace(target) select new Target(target);
+
+				var useRetrieverAsDownloader = TheConfig.UseRetrieverIntegratedDownloader;
+
+				var tasks = new List<Task>();
+				using var retrieverParallellismLimiter = new SemaphoreSlim(TheConfig.Parallelism.RetrieverParallelism);
+				using var downloaderParallellismLimiter = new SemaphoreSlim(TheConfig.Parallelism.DownloaderParallelism);
+				foreach (Target target in targets)
+				{
+					tasks.Add(Task.Run(async () =>
+					{
+						List<string>? downloadListLines = await RetrieveTask(TheConfig, target, retrieverParallellismLimiter, useRetrieverAsDownloader);
+						if (downloadListLines != null && downloadListLines.Count > 0)
+							await DownloadTask(TheConfig, target, downloadListLines, downloaderParallellismLimiter);
+						else
+							Log.Warning("Skipped member {member} as there's no updates.", target.ID);
+					}));
+				}
+
+				await Task.WhenAll(tasks);
+
+				Log.Information("Finished all jobs. Exiting...");
 			}
 			catch (Exception e)
 			{
-				Log.Error(e, "An exception occurred during config parse.");
+				Log.Fatal(e, "Exception caught in main thread!");
 			}
-
-			string inputFileName = TheConfig.ListFile;
-			if (CheckFileExistence(TheConfig.Retriever.Executable, "Gallery-DL executable") || CheckFileExistence(TheConfig.Downloader.Executable, "Aria2 Executable") || CheckFileExistence(inputFileName, "Member ID list"))
-				return;
-
-			Log.Information("Reading list file {file}.", inputFileName);
-			string[] _targets = File.ReadAllLines(inputFileName);
-			IEnumerable<Target> targets = from target in _targets where !string.IsNullOrWhiteSpace(target) select new Target(target);
-
-			var useRetrieverAsDownloader = TheConfig.UseRetrieverIntegratedDownloader;
-
-			var tasks = new List<Task>();
-			using var retrieverParallellismLimiter = new SemaphoreSlim(TheConfig.Parallelism.RetrieverParallelism);
-			using var downloaderParallellismLimiter = new SemaphoreSlim(TheConfig.Parallelism.DownloaderParallelism);
-			foreach (Target target in targets)
+			finally
 			{
-				tasks.Add(Task.Run(async () =>
-				{
-					List<string>? downloadListLines = await RetrieveTask(TheConfig, target, retrieverParallellismLimiter, useRetrieverAsDownloader);
-					if (downloadListLines != null && downloadListLines.Count > 0)
-						await DownloadTask(TheConfig, target, downloadListLines, downloaderParallellismLimiter);
-					else
-						Log.Warning("Skipped member {member} as there's no updates.", target.ID);
-				}));
+				await Log.CloseAndFlushAsync();
 			}
-
-			await Task.WhenAll(tasks);
-
-			Log.Information("Finished all jobs. Exiting...");
 		}
 
 		private static async Task DownloadTask(Config config, Target target, List<string> aria2InputLines, SemaphoreSlim downloaderParallellismLimiter)
@@ -171,14 +187,14 @@ namespace TwitterDump
 						string path = Path.Combine(TheConfig.Destination.FormatDestination(target.ID), fileName);
 						if (new FileInfo(path).Exists)
 						{
-							Log.Warning("File {file} already exists! Skipping media {media} of member {member}.", path, fileName, target.ID);
+							Log.Debug("File {file} already exists! Skipping media {media} of member {member}.", path, fileName, target.ID);
 							continue;
 						}
 					}
 
 					if (duplicateCheckSet.Contains(fileName))
 					{
-						Log.Warning("Skipped {file} as it's already processed previously.", fileName);
+						Log.Debug("Skipped {file} as it's already processed previously.", fileName);
 						continue;
 					}
 					else
@@ -216,24 +232,25 @@ namespace TwitterDump
 
 		private static async Task<string?> Retrieve(Config config, Target target)
 		{
-			var gallery_dl = new Process();
-			gallery_dl.StartInfo.FileName = config.Retriever.Executable;
-			gallery_dl.StartInfo.Arguments = config.Retriever.Parameters.FormatRetriverParameters(target.ID);
-			gallery_dl.StartInfo.UseShellExecute = false;
-			gallery_dl.StartInfo.RedirectStandardOutput = true;
+			var retriever = new Process();
+			retriever.StartInfo.FileName = config.Retriever.Executable;
+			retriever.StartInfo.Arguments = config.Retriever.Parameters.FormatRetriverParameters(target.ID);
+			Log.Debug("Running retriever with argument {args}.", retriever.StartInfo.Arguments);
+			retriever.StartInfo.UseShellExecute = false;
+			retriever.StartInfo.RedirectStandardOutput = true;
 
-			gallery_dl.Start();
+			retriever.Start();
 
 			if (config.UseRetrieverIntegratedDownloader)
 			{
-				await gallery_dl.WaitForExitAsync();
+				await retriever.WaitForExitAsync();
 				return null;
 			}
 			else
 			{
 				using var stream = new MemoryStream();
-				await gallery_dl.StandardOutput.BaseStream.CopyToAsync(stream, 4096);
-				await gallery_dl.WaitForExitAsync();
+				await retriever.StandardOutput.BaseStream.CopyToAsync(stream, 4096);
+				await retriever.WaitForExitAsync();
 				return Encoding.UTF8.GetString(stream.ToArray());
 			}
 		}
@@ -241,16 +258,18 @@ namespace TwitterDump
 		private static async Task Download(Config config, Target target, List<string> input)
 		{
 			// Workaround
-			string tmpFileName = $"{target.ID.ToFileName()}.{Random.Shared.NextInt64()}";
+			string tmpFileName = $"_dl_list_{target.ID}_{Path.GetRandomFileName()}";
 			await File.WriteAllLinesAsync(tmpFileName, input);
 
-			var aria2 = new Process();
-			aria2.StartInfo.FileName = config.Downloader.Executable;
-			aria2.StartInfo.Arguments = FormatDownloaderParameters(config.Downloader.Parameters, target.ID, tmpFileName, config.Destination);
-			aria2.StartInfo.UseShellExecute = true;
-			aria2.Start();
-			await aria2.WaitForExitAsync();
-			File.Delete(tmpFileName);
+			var downloader = new Process();
+			downloader.StartInfo.FileName = config.Downloader.Executable;
+			downloader.StartInfo.Arguments = FormatDownloaderParameters(config.Downloader.Parameters, target.ID, tmpFileName, config.Destination);
+			Log.Debug("Running downloader with argument '{args}'.", downloader.StartInfo.Arguments);
+			downloader.StartInfo.UseShellExecute = true;
+			downloader.Start();
+			await downloader.WaitForExitAsync();
+			if (!TheConfig.KeepDownloadListFile)
+				File.Delete(tmpFileName);
 		}
 
 		private static bool CheckFileExistence(string fileName, string description)
