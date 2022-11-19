@@ -38,8 +38,8 @@ namespace TwitterDump
 
 			Log.Logger = new LoggerConfiguration()
 				.MinimumLevel.Debug()
-				.WriteTo.File(GetCmdSwitch(args, "l", "TwitterDump.log"), buffered: true, flushToDiskInterval: TimeSpan.FromMilliseconds(100), fileSizeLimitBytes: 16777216 /* 128MB */, rollOnFileSizeLimit: true)
-				.WriteTo.Console(theme: AnsiConsoleTheme.Code)
+				.WriteTo.Async(opt => opt.File(GetCmdSwitch(args, "l", "TwitterDump.log"), buffered: true, flushToDiskInterval: TimeSpan.FromMilliseconds(100), fileSizeLimitBytes: 16777216 /* 128MB */, rollOnFileSizeLimit: true), bufferSize: 8192)
+				.WriteTo.Async(opt => opt.Console(theme: AnsiConsoleTheme.Code), bufferSize: 16384)
 				.CreateLogger();
 
 			var configFileName = GetCmdSwitch(args, "c", "TwitterDump.json");
@@ -91,8 +91,10 @@ namespace TwitterDump
 				tasks.Add(Task.Run(async () =>
 				{
 					List<string>? downloadListLines = await RetrieveTask(TheConfig, target, retrieverParallellismLimiter, useRetrieverAsDownloader);
-					if (downloadListLines != null)
+					if (downloadListLines != null && downloadListLines.Count > 0)
 						await DownloadTask(TheConfig, target, downloadListLines, downloaderParallellismLimiter);
+					else
+						Log.Warning("Skipped member {member} as there's no updates.", target.ID);
 				}));
 			}
 

@@ -30,6 +30,11 @@ namespace TwitterDump.Protocols
 			get;
 		}
 
+		public abstract Func<string, string?> MemberNameRetriever
+		{
+			get;
+		}
+
 		public static AbstractProtocol? ByName(string name) => (from protocol in ProtocolRegistry where string.Equals(protocol.Name, name, StringComparison.InvariantCultureIgnoreCase) select protocol).FirstOrDefault();
 
 		public static AbstractProtocol? ByPattern(string url) => (from protocol in ProtocolRegistry

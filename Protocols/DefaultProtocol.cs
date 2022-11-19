@@ -9,5 +9,7 @@ namespace TwitterDump.Protocols
 		public override Regex? Pattern => null;
 
 		public override Func<string, string?> NewFileNameRetriever => (string _) => null;
+
+		public override Func<string, string?> MemberNameRetriever => (string _) => null;
 	}
 }
