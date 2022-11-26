@@ -8,7 +8,16 @@ namespace TwitterDump.Protocols
 
 		public override Regex? Pattern => new(@"(?:https?\:)?(?:\/\/)?twitter\.com\/([\w]+)(?:[\?\/].*)?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-		public override Func<string, string?> NewFileNameRetriever => (string cdnURL) => cdnURL.Contains("pbs.twimg.com") ? $"{cdnURL[(cdnURL.LastIndexOf('/') + 1)..cdnURL.IndexOf('?')]}.{cdnURL[(cdnURL.IndexOf("format=") + 7)..cdnURL.IndexOf('&')]}" : null;
+		public override Func<string, string?> NewFileNameRetriever => (string cdnURL) =>
+		{
+			if (cdnURL.Contains("pbs.twimg.com"))
+			{
+				int formatIndex = cdnURL.IndexOf("format=") + 7;
+				int formatIndexEnd = string.Concat(cdnURL.Skip(formatIndex)).IndexOf('&') + formatIndex;
+				return $"{cdnURL[(cdnURL.LastIndexOf('/') + 1)..cdnURL.IndexOf('?')]}.{cdnURL[formatIndex..formatIndexEnd]}";
+			}
+			return null;
+		};
 
 		public override Func<string, string?> MemberNameRetriever => (string memberURL) =>
 		{
