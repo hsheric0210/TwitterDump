@@ -2,21 +2,19 @@
 image: Visual Studio 2022
 build_script:
 - cmd: >-
-    dotnet restore
+    dotnet restore --nologo
 
-    dotnet build -c Release
+    dotnet build --nologo -c Release
 
-    dotnet pack --include-symbols --include-source -c Release
+    dotnet publish --nologo -r win-x64 --no-self-contained -p:PublishSingleFile=true -c Release -o %APPVEYOR_BUILD_FOLDER%/x64 TwitterDump\TwitterDump.csproj
 
-    dotnet publish -r win-x64 --no-self-contained -p:PublishSingleFile=true -c Release -o %APPVEYOR_BUILD_FOLDER%/bin/publish/x64
-
-    dotnet publish -r win-x86 --no-self-contained -p:PublishSingleFile=true -c Release -o %APPVEYOR_BUILD_FOLDER%/bin/publish/x86
+    dotnet publish --nologo -r win-x86 --no-self-contained -p:PublishSingleFile=true -c Release -o %APPVEYOR_BUILD_FOLDER%/x86 TwitterDump\TwitterDump.csproj
 artifacts:
-- path: bin\publish\x64\TwitterDump.exe
+- path: x64\TwitterDump.exe
   name: 64-bit executable
-- path: bin\publish\x64\TwitterDump.pdb
+- path: x64\TwitterDump.pdb
   name: 64-bit debug symbol database
-- path: bin\publish\x86\TwitterDump.exe
+- path: x86\TwitterDump.exe
   name: 32-bit executable
-- path: bin\publish\x86\TwitterDump.pdb
+- path: x86\TwitterDump.pdb
   name: 32-bit debug symbol database
